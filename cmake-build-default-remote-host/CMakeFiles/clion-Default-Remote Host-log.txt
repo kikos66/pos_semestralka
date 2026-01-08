@@ -1,0 +1,10 @@
+/usr/bin/cmake -G "Unix Makefiles" -S /tmp/tmp.EUP30D5GBH -B /tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host
+-- The C compiler identification is GNU 12.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host

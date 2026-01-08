@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/pos_semestralka.dir/main.c.o CMakeFiles/pos_semestralka.dir/server.c.o CMakeFiles/pos_semestralka.dir/client.c.o -o pos_semestralka 

@@ -6,10 +6,10 @@
 			[
 				{
 					"build" : ".",
-					"jsonFile" : "directory-.-Debug-d0094a50bb2071803777.json",
+					"jsonFile" : "directory-.-f5ebdc15457944623624.json",
 					"minimumCMakeVersion" : 
 					{
-						"string" : "3.30"
+						"string" : "3.25.1"
 					},
 					"projectIndex" : 0,
 					"source" : ".",
@@ -19,7 +19,7 @@
 					]
 				}
 			],
-			"name" : "Debug",
+			"name" : "",
 			"projects" : 
 			[
 				{
@@ -39,7 +39,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "pos_semestralka::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-pos_semestralka-Debug-27e2ed8b5ed01bcd159f.json",
+					"jsonFile" : "target-pos_semestralka-a502f631c8f8e99db820.json",
 					"name" : "pos_semestralka",
 					"projectIndex" : 0
 				}
@@ -49,12 +49,12 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "C:/Users/maros/CLionProjects/pos_semestralka/cmake-build-debug",
-		"source" : "C:/Users/maros/CLionProjects/pos_semestralka"
+		"build" : "/tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host",
+		"source" : "/tmp/tmp.EUP30D5GBH"
 	},
 	"version" : 
 	{
 		"major" : 2,
-		"minor" : 7
+		"minor" : 4
 	}
 }
