@@ -4,6 +4,7 @@
 typedef struct {
     int height;
     int width;
+    int destroyed;
 }Ship;
 
 typedef struct {
@@ -22,5 +23,7 @@ Ship* ship_init(int height, int width);
 Game* game_init(int height, int width, int number_of_players);
 int add_ship(Board* board, int height, int width, int x, int y);
 void game_destroy(Game* game);
+int hit(Board* board, int x, int y);
+int is_player_alive(Board* board);
 
 #endif //GAME_H

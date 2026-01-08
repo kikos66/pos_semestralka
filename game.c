@@ -16,6 +16,7 @@ Ship* ship_init(int height, int width) {
     Ship* ship = (Ship*)malloc(sizeof(Ship));
     ship->height = height;
     ship->width = width;
+    ship->destroyed = 0;
     return ship;
 }
 
@@ -46,6 +47,25 @@ int add_ship(Board* board, int height, int width, int x, int y) {
         }
     }
     return 1;
+}
+
+int hit(Board* board, int x, int y) {
+    Ship* ship = board->ships_map[y*board->width+x];
+    if (ship != NULL && ship->destroyed == 0) {
+        ship->destroyed = 1;
+        return 1;
+    }
+    return 0;
+}
+
+int is_player_alive(Board* board) {
+    for (int i = 0; i < board->width * board->height; i++) {
+        Ship* ship = board->ships_map[i];
+        if (ship != NULL && ship->destroyed == 0) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void ship_destroy(Ship* ship) {
