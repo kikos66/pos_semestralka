@@ -23,6 +23,14 @@ int g_players, g_height, g_width;
 int shipHeights[] = {1};
 int shipWidths[]  = {1};
 
+void handle_signal() {
+    sendMsg(STDOUT_FILENO, "Quitting game");
+    if (sock > 0) {
+        close(sock);
+    }
+    _exit(0);
+}
+
 int get_port_number_from_user() {
     int port = 0;
     int ok = 0;
@@ -229,6 +237,30 @@ void handle_shoot_action() {
         if (scanf("%d", &y) != 1) {
             continue;
         }
+
+        if (x < 0 || y < 0 || x >= g_width || y >= g_height) {
+            printf("Coordinates outside of board range\n");
+            continue;
+        }
+        if (target == player_id || target < 0 || target >= g_players) {
+            printf("Invalid target\n");
+            continue;
+        }
+
+        char cell = localBoards[BOARD_INDEX(target, y, x)];
+
+        if (cell != 0) {
+            int flag = 0;
+            printf("You have already fired on this position, are you sure you wish to fire here again?\n1.YES\n2.NO\n");
+
+            if (scanf("%d", &flag) != 1) {
+                printf("Invalid input\n");
+                continue;
+            }
+            if (flag == 2) {
+                continue;
+            }
+        }
         break;
     }
     char msg[BUF_SIZE];
@@ -310,7 +342,7 @@ void* receive_thread() {
         } else if (strncmp(buffer, "MISS", 4) == 0) {
             int p_from, p_to, tx, ty;
             if(sscanf(buffer, "MISS %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
-                update_board_state(p_to, tx, ty, 3);
+                update_board_state(p_to, tx, ty, 2);
                 snprintf(buffer, BUF_SIZE, "Player %d missed Player %d at (%d,%d).", p_from, p_to, tx, ty);
                 strncpy(status_message, buffer, BUF_SIZE - 1);
                 if (p_from == player_id) {
@@ -328,13 +360,17 @@ void* receive_thread() {
             int win;
             sscanf(buffer, "WINNER %d", &win);
             printf(GREEN "\n!!! Player %d WINS !!!\n" RESET, win);
+            pthread_mutex_lock(&turn_mutex);
             game_running = 0;
+            pthread_cond_broadcast(&turn_cond);
+            pthread_mutex_unlock(&turn_mutex);
             break;
         } else if (strncmp(buffer, "ERROR", 5) == 0) {
             strncpy(status_message, buffer, BUF_SIZE - 1);
         }
     }
     game_running = 0;
+    pthread_cond_broadcast(&turn_cond);
     return NULL;
 }
 
@@ -346,6 +382,8 @@ void run_client(int port) {
         perror("Socket creation failed");
         return;
     }
+
+    signal(SIGINT, handle_signal);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -400,10 +438,13 @@ void run_client(int port) {
         pthread_mutex_unlock(&turn_mutex);
     }
 
-    pthread_join(recv_thread, NULL);
+    shutdown(sock, SHUT_RDWR);
     close(sock);
 
+    pthread_join(recv_thread, NULL);
+
     free(localBoards);
+    localBoards = NULL;
 
     printf("Client exiting.\n");
 }
