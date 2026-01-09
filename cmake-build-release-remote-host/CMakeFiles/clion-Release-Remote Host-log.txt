@@ -1,6 +1,0 @@
-/usr/bin/cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" -S /tmp/tmp.EUP30D5GBH -B /tmp/tmp.EUP30D5GBH/cmake-build-release-remote-host
-CMake Error at CMakeLists.txt:1 (cmake_minimum_required):
-  CMake 3.30 or higher is required.  You are running version 3.25.1
-
-
--- Configuring incomplete, errors occurred!

@@ -1,3 +1,0 @@
-/tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host/CMakeFiles/pos_semestralka.dir
-/tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host/CMakeFiles/edit_cache.dir
-/tmp/tmp.EUP30D5GBH/cmake-build-default-remote-host/CMakeFiles/rebuild_cache.dir

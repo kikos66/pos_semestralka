@@ -1,3 +1,0 @@
-C:/Users/maros/CLionProjects/pos_semestralka/cmake-build-debug/CMakeFiles/pos_semestralka.dir
-C:/Users/maros/CLionProjects/pos_semestralka/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/Users/maros/CLionProjects/pos_semestralka/cmake-build-debug/CMakeFiles/rebuild_cache.dir
