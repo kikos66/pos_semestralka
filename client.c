@@ -9,6 +9,10 @@
 
 int sock, player_id;
 volatile int game_running = 1;
+char status_message[BUF_SIZE] = "";
+int my_turn = 0;
+pthread_mutex_t turn_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t turn_cond = PTHREAD_COND_INITIALIZER;
 
 int shipHeights[] = {1};
 int shipWidths[]  = {1};
@@ -114,6 +118,24 @@ void* receive_thread() {
                     }
                 }
             }
+        } else if (strncmp(buffer, "YOUR TURN", 9) == 0) {
+            pthread_mutex_lock(&turn_mutex);
+            my_turn = 1;
+            pthread_cond_signal(&turn_cond);
+            pthread_mutex_unlock(&turn_mutex);
+        } else if (strncmp(buffer, "HIT", 3) == 0) {
+            int p_from, p_to, tx, ty;
+            if(sscanf(buffer, "HIT %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
+                snprintf(buffer, BUF_SIZE, "Player %d hit Player %d at (%d,%d).", p_from, p_to, tx, ty);
+                strncpy(status_message, buffer, BUF_SIZE - 1);
+            }
+        } else if (strncmp(buffer, "MISS", 4) == 0) {
+            int p_from, p_to, tx, ty;
+            if(sscanf(buffer, "MISS %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
+                snprintf(buffer, BUF_SIZE, "Player %d missed Player %d at (%d,%d).", p_from, p_to, tx, ty);
+                strncpy(status_message, buffer, BUF_SIZE - 1);
+            }
+        }
     }
 }
 
@@ -146,4 +168,8 @@ void run_client(int port) {
     printf("Connected as Player %d. Waiting for game start...\n", player_id);
 
     pthread_create(&recv_thread, NULL, receive_thread, NULL);
+
+    pthread_join(recv_thread, NULL);
+    close(sock);
+    printf("Client exiting.\n");
 }

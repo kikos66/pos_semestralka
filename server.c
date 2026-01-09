@@ -1,4 +1,5 @@
 #include "server.h"
+#include <string.h>
 #include "communication.h"
 #include "game.h"
 #include "stdio.h"
@@ -7,6 +8,7 @@
 #include <arpa/inet.h>
 
 pthread_mutex_t server_mutex = PTHREAD_MUTEX_INITIALIZER;
+server_state_t state = SERVER_LOBBY;
 
 int ship_handler(int client, Board* board, int limit) {
     int placed_count = 0;
@@ -100,7 +102,9 @@ void run_server(int port, int num_clients, int height, int width) {
     for(int i = 0; i < num_clients; i++) {
         player_alive[i] = 1;
     }
+    int players_remaining = num_clients;
     int current_turn = 0;
+    char buffer[BUF_SIZE];
 
     while (state == SERVER_IN_GAME) {
         if (player_alive[current_turn] == 0) {
@@ -110,5 +114,52 @@ void run_server(int port, int num_clients, int height, int width) {
 
         int active_fd = clients[current_turn];
         sendMsg(active_fd, "YOUR TURN");
+
+        memset(buffer, 0, BUF_SIZE);
+        int bytes = recvBuff(active_fd, buffer, BUF_SIZE);
+
+        int target_id = -1, x = -1, y = -1;
+
+        if (bytes <= 0) {
+            printf("Player %d disconnected.\n", current_turn);
+            player_alive[current_turn] = 0;
+            players_remaining--;
+            close(active_fd);
+            if (players_remaining < 2) {
+                break;
+            }
+            current_turn = (current_turn + 1) % num_clients;
+            continue;
+        }
+
+        if (sscanf(buffer, "%d %d %d", &target_id, &x, &y) == 3) {
+            int target_idx = target_id;
+
+            if (target_idx < 0 || target_idx >= num_clients || target_idx == current_turn || player_alive[target_idx] == 0) {
+                sendMsg(active_fd, "ERROR Player ID is invalid");
+                continue;
+            }
+
+            pthread_mutex_lock(&server_mutex);
+            int is_hit = hit(gameInstance->boards[target_idx], x, y);
+            pthread_mutex_unlock(&server_mutex);
+
+            char res[BUF_SIZE];
+            if (is_hit == 1) {
+                snprintf(res, BUF_SIZE, "HIT %d %d %d %d", current_turn, target_idx, x, y);
+            } else if (is_hit == 0) {
+                snprintf(res, BUF_SIZE, "MISS %d %d %d %d", current_turn, target_idx, x, y);
+            } else {
+                sendMsg(active_fd, "ERROR Already hit there! Try again.");
+                continue;
+            }
+
+            for (int i = 0; i < num_clients; i++) {
+                sendMsg(clients[i], res);
+            }
+        } else {
+            sendMsg(active_fd, "ERROR Invalid format");
+            continue;
+        }
     }
 }

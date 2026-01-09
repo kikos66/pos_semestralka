@@ -4,12 +4,13 @@
 typedef struct {
     int height;
     int width;
-    int destroyed;
+    int hits;
 }Ship;
 
 typedef struct {
     int height;
     int width;
+    int* hits_map;
     Ship** ships_map;
 }Board;
 

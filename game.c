@@ -6,8 +6,10 @@ Board* board_init(int height, int width) {
     board->height = height;
     board->width = width;
     board->ships_map = (Ship**)malloc(sizeof(Ship*) * height * width);
+    board->hits_map = (int*)malloc(sizeof(int*) * height * width);
     for (int i = 0; i < height * width; i++) {
         board->ships_map[i] = NULL;
+        board->hits_map[i] = 0;
     }
     return board;
 }
@@ -16,7 +18,7 @@ Ship* ship_init(int height, int width) {
     Ship* ship = (Ship*)malloc(sizeof(Ship));
     ship->height = height;
     ship->width = width;
-    ship->destroyed = 0;
+    ship->hits = 0;
     return ship;
 }
 
@@ -32,6 +34,9 @@ Game* game_init(int height, int width, int numberOfPlayers) {
 }
 
 int add_ship(Board* board, int height, int width, int x, int y) {
+    if (x < 0 || (x + width) > board->width || y < 0 || (y + height) > board->height) {
+        return -1;
+    }
     Ship* ship = ship_init(height, width);
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
@@ -51,9 +56,13 @@ int add_ship(Board* board, int height, int width, int x, int y) {
 
 int hit(Board* board, int x, int y) {
     Ship* ship = board->ships_map[y*board->width+x];
-    if (ship != NULL && ship->destroyed == 0) {
-        ship->destroyed = 1;
+    if (ship != NULL && board->hits_map[y*board->width+x] == 0) {
+        board->hits_map[y*board->width+x] = 1;
+        ship->hits++;
         return 1;
+    }
+    if (ship != NULL && board->hits_map[y*board->width+x] == 1) {
+        return -1;
     }
     return 0;
 }
@@ -61,7 +70,7 @@ int hit(Board* board, int x, int y) {
 int is_player_alive(Board* board) {
     for (int i = 0; i < board->width * board->height; i++) {
         Ship* ship = board->ships_map[i];
-        if (ship != NULL && ship->destroyed == 0) {
+        if (ship != NULL && ship->hits < ship->height * ship->width) {
             return 1;
         }
     }
@@ -78,6 +87,7 @@ void board_destroy(Board* board) {
             ship_destroy(board->ships_map[i]);
         }
     }
+    free(board->hits_map);
     free(board->ships_map);
     free(board);
 }
