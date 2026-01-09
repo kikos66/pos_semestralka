@@ -135,9 +135,27 @@ void* receive_thread() {
                 snprintf(buffer, BUF_SIZE, "Player %d missed Player %d at (%d,%d).", p_from, p_to, tx, ty);
                 strncpy(status_message, buffer, BUF_SIZE - 1);
             }
+        } else if (strncmp(buffer, "ELIMINATED", 10) == 0) {
+            int dead;
+            sscanf(buffer, "ELIMINATED %d", &dead);
+            printf("\nPlayer %d Eliminated!\n", dead);
+            if (dead == player_id) {
+                printf("[ALERT] You have lost all your ships. You are out.\n");
+            }
+        } else if (strncmp(buffer, "WINNER", 6) == 0) {
+            int win;
+            sscanf(buffer, "WINNER %d", &win);
+            printf("\n!!! Player %d WINS !!!\n", win);
+            game_running = 0;
+            break;
+        } else if (strncmp(buffer, "ERROR", 5) == 0) {
+            strncpy(status_message, buffer, BUF_SIZE - 1);
         }
     }
+    game_running = 0;
+    return NULL;
 }
+
 
 void run_client(int port) {
     pthread_t recv_thread;

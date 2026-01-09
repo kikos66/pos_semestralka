@@ -15,6 +15,28 @@ int ship_handler(int client, Board* board, int limit) {
 
     while (1) {
         char buffer[BUF_SIZE];
+
+        if (limit != -1 && placed_count >= limit) {
+            sendMsg(client, "READY");
+            return placed_count;
+        }
+
+        memset(buffer, 0, BUF_SIZE);
+        int bytes = recvBuff(client, buffer, BUF_SIZE);
+        if (bytes <= 0) {
+            return 0;
+        }
+
+        if (limit == -1 && strncmp(buffer, "DONE", 4) == 0) {
+            if (placed_count > 0) {
+                sendMsg(client, "READY");
+                return placed_count;
+            } else {
+                sendMsg(client, "ERROR MIN 1");
+                continue;
+            }
+        }
+
         int x, y, h, w;
         if (sscanf(buffer, "%d %d %d %d", &x, &y, &h, &w) == 4) {
             pthread_mutex_lock(&server_mutex);
@@ -142,6 +164,7 @@ void run_server(int port, int num_clients, int height, int width) {
 
             pthread_mutex_lock(&server_mutex);
             int is_hit = hit(gameInstance->boards[target_idx], x, y);
+            int still_alive = is_player_alive(gameInstance->boards[target_idx]);
             pthread_mutex_unlock(&server_mutex);
 
             char res[BUF_SIZE];
@@ -157,9 +180,37 @@ void run_server(int port, int num_clients, int height, int width) {
             for (int i = 0; i < num_clients; i++) {
                 sendMsg(clients[i], res);
             }
+
+            if (!still_alive) {
+                player_alive[target_idx] = 0;
+                players_remaining--;
+                snprintf(res, BUF_SIZE, "ELIMINATED %d", target_idx);
+                for (int i = 0; i < num_clients; i++) {
+                    sendMsg(clients[i], res);
+                }
+            }
+
+            if (players_remaining == 1) {
+                int winner = -1;
+                for (int i = 0; i < num_clients; i++) {
+                    if(player_alive[i]) {
+                        winner = i;
+                    }
+                }
+                snprintf(res, BUF_SIZE, "WINNER %d", winner);
+                for (int i = 0; i < num_clients; i++) {
+                    sendMsg(clients[i], res);
+                }
+                state = SERVER_GAME_OVER;
+            } else {
+                current_turn = (current_turn + 1) % num_clients;
+            }
         } else {
             sendMsg(active_fd, "ERROR Invalid format");
-            continue;
         }
     }
+    free(player_alive);
+    game_destroy(gameInstance);
+    close(server_fd);
+    printf("[SERVER] Game Over. Server shutting down.\n");
 }
