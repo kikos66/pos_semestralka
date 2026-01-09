@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pthread -g
-OBJ = main.o server.o client.o game.o
+OBJ = main.o server.o client.o game.o communication.o
 
 all: app server	client
 
@@ -24,6 +24,9 @@ client.o: client.c client.h
 
 game.o: game.c game.h
 	$(CC) $(CFLAGS) -c game.c
+
+communication.o: communication.c communication.h
+	$(CC) $(CFLAGS) -c communication.c
 
 clean:
 	rm -f *.o app server client

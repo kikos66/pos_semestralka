@@ -1,7 +1,7 @@
 #include "client.h"
+#include "communication.h"
 #include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -10,22 +10,53 @@
 int sock, player_id;
 volatile int game_running = 1;
 
-int recvBuff(int sockfd, char* buff, int size) {
-    int i = 0;
-    char c = '\0';
-    int n;
-    while (i < size - 1) {
-        n = read(sockfd, &c, 1);
-        if (n <= 0) {
-            return -1;
-        }
-        if (c == '\n') {
-            break;
-        }
-        buff[i++] = c;
+int shipHeights[] = {1};
+int shipWidths[]  = {1};
+
+int handle_init() {
+    static int currentShipID = 0;
+    int x = 0, y = 0;
+    char msg[BUF_SIZE];
+    char buffer[BUF_SIZE];
+
+    int h = shipHeights[currentShipID];
+    int w = shipWidths[currentShipID];
+    printf("\n--- Placing Ship Type %d Height: %d Width: %d) ---\n", currentShipID, h, w);
+    printf("Enter the X coordinates of your ship:\n");
+    if (scanf("%d", &x) != 1) {
+        printf("Invalid input\n");
+        while (getchar() != '\n');
+        return 0;
     }
-    buff[i] = '\0';
-    return i;
+
+    printf("Enter the Y coordinates of your ship:\n");
+    if (scanf("%d", &y) != 1) {
+        printf("Invalid input\n");
+        while (getchar() != '\n');
+        return 0;
+    }
+
+    snprintf(msg, BUF_SIZE, "%d %d %d %d", x, y, h, w);
+    sendMsg(sock, msg);
+
+    memset(buffer, 0, BUF_SIZE);
+    recvBuff(sock, buffer, BUF_SIZE);
+
+    if (strncmp(buffer, "OK", 2) == 0) {
+        printf("Ship successfully placed\n");
+        currentShipID = (currentShipID + 1) % NUM_SHIP_TYPES;
+        return 1;
+    }
+    if (strncmp(buffer, "FULL", 4) == 0) {
+        printf("There is already a ship on these coordinates\n");
+        return 0;
+    }
+    if (strncmp(buffer, "INVALID", 7) == 0) {
+        printf("Entered coordinates are outside the board range\n");
+        return 0;
+    }
+    printf("Unknown server response\n");
+    return 0;
 }
 
 void* receive_thread() {
@@ -33,7 +64,56 @@ void* receive_thread() {
     int bytes;
     while (game_running && (bytes = recvBuff(sock, buffer, BUF_SIZE - 1)) > 0) {
         buffer[bytes] = '\0';
+        if (strncmp(buffer, "START", 5) == 0) {
+            if (player_id == 0) {
+                printf("Game started\n");
+            } else {
+                printf("\nGame Started! Waiting for Player 1 to set up the game...\n");
+            }
+        } else if (strncmp(buffer, "INIT", 4) == 0) {
+            printf("[INFO] Setting up ships\n");
 
+            if (player_id == 0) {
+                while(!handle_init()) {
+
+                }
+
+                while (1) {
+                    int choice = 0;
+                    printf("1. Add another ship\n2. Finish placement\n");
+                    if (scanf("%d", &choice) != 1) {
+                        while(getchar() != '\n');
+                    }
+
+                    if (choice == 1) {
+                        handle_init();
+                    } else if (choice == 2) {
+                        sendMsg(sock, "DONE");
+                        char resp[BUF_SIZE];
+                        recvBuff(sock, resp, BUF_SIZE);
+                        if (strncmp(resp, "READY", 5) == 0) {
+                            printf("Waiting for other players...\n");
+                            break;
+                        }
+                    }
+                }
+            } else {
+                int ships_needed = 0;
+                if (sscanf(buffer, "INIT %d", &ships_needed) == 1) {
+                    printf("Host placed %d ships. You must place %d ships.\n", ships_needed, ships_needed);
+
+                    for (int i = 0; i < ships_needed; i++) {
+                        printf("--- Placing Ship %d of %d ---\n", i + 1, ships_needed);
+                        while (!handle_init());
+                    }
+
+                    char resp[BUF_SIZE];
+                    recvBuff(sock, resp, BUF_SIZE);
+                    if (strncmp(resp, "READY", 5) == 0) {
+                        printf("All ships placed! Game starting...\n");
+                    }
+                }
+            }
     }
 }
 

@@ -1,18 +1,12 @@
 #include "server.h"
+#include "communication.h"
 #include "game.h"
-#include <string.h>
 #include "stdio.h"
 #include "stdlib.h"
 #include <unistd.h>
 #include <arpa/inet.h>
 
 pthread_mutex_t server_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-void sendMsg(int sockfd, char* msg) {
-    char buffer[BUF_SIZE + 2];
-    snprintf(buffer, sizeof(buffer), "%s\n", msg);
-    write(sockfd, buffer, strlen(buffer));
-}
 
 int ship_handler(int client, Board* board, int limit) {
     int placed_count = 0;
@@ -83,7 +77,7 @@ void run_server(int port, int num_clients, int height, int width) {
 
         connected_clients++;
     }
-
+    state = SERVER_IN_GAME;
     for (int i = 0; i < num_clients; i++) {
         sendMsg(clients[i], "START");
     }
@@ -92,4 +86,29 @@ void run_server(int port, int num_clients, int height, int width) {
     sendMsg(clients[0], "INIT HOST");
     int total_ships = ship_handler(clients[0], gameInstance->boards[0], -1);
     printf("[SERVER] Host placed %d ships.\n", total_ships);
+
+    for (int i = 1; i < num_clients; i++) {
+        char msg[BUF_SIZE];
+        snprintf(msg, BUF_SIZE, "INIT %d", total_ships);
+        sendMsg(clients[i], msg);
+        ship_handler(clients[i], gameInstance->boards[i], total_ships);
+    }
+
+    printf("[SERVER] All ships placed. Starting Game Loop.\n");
+
+    int* player_alive = (int*)malloc(sizeof(int) * num_clients);
+    for(int i = 0; i < num_clients; i++) {
+        player_alive[i] = 1;
+    }
+    int current_turn = 0;
+
+    while (state == SERVER_IN_GAME) {
+        if (player_alive[current_turn] == 0) {
+            current_turn = (current_turn + 1) % num_clients;
+            continue;
+        }
+
+        int active_fd = clients[current_turn];
+        sendMsg(active_fd, "YOUR TURN");
+    }
 }
