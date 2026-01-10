@@ -165,8 +165,11 @@ void run_server(int port, int num_clients, int height, int width) {
 
         int active_fd = clients[current_turn];
         char turn_msg[BUF_SIZE];
-        snprintf(turn_msg, BUF_SIZE, "YOUR TURN %d", ROUND_TIMEOUT_SEC);
-        sendMsg(active_fd, turn_msg);
+        snprintf(turn_msg, BUF_SIZE, "TURN %d %d", current_turn, ROUND_TIMEOUT_SEC);
+
+        for (int i = 0; i < num_clients; i++) {
+            sendMsg(clients[i], turn_msg);
+        }
 
         struct pollfd pfd;
         pfd.fd = active_fd;
@@ -206,7 +209,7 @@ void run_server(int port, int num_clients, int height, int width) {
             printf("\n[SERVER] Player %d timed out. Performing random shot.\n", current_turn);
             generate_random_shot(gameInstance, current_turn, num_clients, player_alive, &target_id, &x, &y);
             char info[BUF_SIZE];
-            snprintf(info, BUF_SIZE, "RANDOM_SHOT %d %d %d %d", current_turn, target_id, x, y);
+            snprintf(info, BUF_SIZE, "RANDOM SHOT %d %d %d %d", current_turn, target_id, x, y);
             for (int i = 0; i < num_clients; i++) {
                 sendMsg(clients[i], info);
             }

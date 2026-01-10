@@ -17,6 +17,10 @@ int my_turn = 0;
 char* localBoards;
 pthread_mutex_t turn_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t turn_cond = PTHREAD_COND_INITIALIZER;
+int current_turn_player = -1;
+time_t turn_end_time = 0;
+int turn_duration = 0;
+volatile int input_mode = 0;
 
 int g_players, g_height, g_width;
 #define BOARD_INDEX(p, y, x) (((p) * g_height + (y)) * g_width + (x))
@@ -97,18 +101,36 @@ void init_local_boards(int n, int h, int w) {
     memset(localBoards, 0, sizeof(char*) * n * h * w);
 }
 
-void render_game() {
-    printf("\033[2J\033[H"); //AI
+void render_turn_header_only() {
+    printf("\033[s");
+    printf("\033[H");
+    printf("=== BATTLESHIP : Player %d ===\n", player_id);
 
-    printf("=== BATTLESHIP : Player %d ===\n\n", player_id);
+    if (current_turn_player != -1) {
+        int remaining = (int)(turn_end_time - time(NULL));
+        if (remaining < 0) remaining = 0;
 
-    printf("--- MY BOARD ---\n");
+        if (current_turn_player == player_id)
+            printf(GREEN "Your turn! " RESET);
+        else
+            printf("Player %d's turn. ", current_turn_player);
+
+        printf("Time left: %d sec\n", remaining);
+    }
+    printf("\n");
+    printf("\033[u");
+    fflush(stdout);
+}
+
+void render_game_contents() {
+    render_turn_header_only();
+    printf("\n");
+    printf("\n--- MY BOARD ---\n");
     printf("   ");
     for(int x = 0; x < g_width; x++) {
         printf("%d ", x);
     }
     printf("\n");
-
     for (int y = 0; y < g_height; y++) {
         printf("%d |", y);
         for (int x = 0; x < g_width; x++) {
@@ -159,9 +181,29 @@ void render_game() {
     if (status_message[0] != '\0') {
         printf(RED "\n%s\n" RESET, status_message);
     }
-    status_message[0] = '\0';
     fflush(stdout);
 }
+
+void render_full_game() {
+    printf("\033[2J\033[H");
+    render_game_contents();
+}
+
+void* timer_thread() {
+    while (game_running) {
+        sleep(1);
+
+        pthread_mutex_lock(&turn_mutex);
+        int redraw_timer = (current_turn_player != -1);
+        pthread_mutex_unlock(&turn_mutex);
+
+        if (redraw_timer) {
+            render_turn_header_only();
+        }
+    }
+    return NULL;
+}
+
 
 void update_board_state(int target_id, int x, int y, int status) {
     if (target_id >= 0 && target_id < g_players && x >= 0 && x < g_width && y >= 0 && y < g_height) {
@@ -204,7 +246,7 @@ int handle_init() {
                 localBoards[BOARD_INDEX(player_id, y + i, x + j)] = 1;
             }
         }
-        render_game();
+        render_full_game();
         printf("Ship successfully placed\n");
         currentShipID = (currentShipID + 1) % NUM_SHIP_TYPES;
         return 1;
@@ -251,6 +293,9 @@ int get_input_safe(int *var) {
 
 void handle_shoot_action() {
     int target, x, y;
+
+    input_mode = 1;
+    render_full_game();
 
     printf("\n--- YOUR TURN ---\n");
     while (1) {
@@ -312,7 +357,7 @@ void* receive_thread() {
                 printf("\nGame Started! Waiting for Player 1 to set up the game...\n");
             }
         } else if (strncmp(buffer, "INIT", 4) == 0) {
-            render_game();
+            render_full_game();
             printf("[INFO] Setting up ships\n");
 
             if (player_id == 0) {
@@ -356,25 +401,30 @@ void* receive_thread() {
                     }
                 }
             }
-        } else if (strncmp(buffer, "YOUR TURN", 9) == 0) {
-            int seconds;
-            if (sscanf(buffer, "YOUR_TURN %d", &seconds) == 1) {
-                snprintf(status_message, BUF_SIZE, "Your turn! You have %d seconds to shoot.", seconds);
-            }
+        } else if (strncmp(buffer, "TURN", 4) == 0) {
+            int player, seconds;
+            if (sscanf(buffer, "TURN %d %d", &player, &seconds) == 2) {
+                pthread_mutex_lock(&turn_mutex);
 
-            pthread_mutex_lock(&turn_mutex);
-            my_turn = 1;
-            pthread_cond_signal(&turn_cond);
-            pthread_mutex_unlock(&turn_mutex);
+                current_turn_player = player;
+                turn_duration = seconds;
+                turn_end_time = time(NULL) + seconds;
+
+                if (player == player_id) {
+                    my_turn = 1;
+                    pthread_cond_signal(&turn_cond);
+                }
+
+                pthread_mutex_unlock(&turn_mutex);
+
+                render_full_game();
+            }
         } else if (strncmp(buffer, "HIT", 3) == 0) {
             int p_from, p_to, tx, ty;
             if(sscanf(buffer, "HIT %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
                 update_board_state(p_to, tx, ty, 3);
                 snprintf(buffer, BUF_SIZE, "Player %d hit Player %d at (%d,%d).", p_from, p_to, tx, ty);
                 strncpy(status_message, buffer, BUF_SIZE - 1);
-                if (p_from == player_id) {
-                    render_game();
-                }
             }
         } else if (strncmp(buffer, "MISS", 4) == 0) {
             int p_from, p_to, tx, ty;
@@ -382,9 +432,6 @@ void* receive_thread() {
                 update_board_state(p_to, tx, ty, 2);
                 snprintf(buffer, BUF_SIZE, "Player %d missed Player %d at (%d,%d).", p_from, p_to, tx, ty);
                 strncpy(status_message, buffer, BUF_SIZE - 1);
-                if (p_from == player_id) {
-                    render_game();
-                }
             }
         } else if (strncmp(buffer, "ELIMINATED", 10) == 0) {
             int dead;
@@ -410,7 +457,7 @@ void* receive_thread() {
                 snprintf(status_message, BUF_SIZE,
                     "Player %d timed out! Random shot at Player %d (%d,%d).", shooter, target, x, y);
 
-                render_game();
+                render_full_game();
             }
         }
     }
@@ -421,7 +468,7 @@ void* receive_thread() {
 
 
 void run_client(int port) {
-    pthread_t recv_thread;
+    pthread_t recv_thread, timer;
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         perror("Socket creation failed");
@@ -466,6 +513,7 @@ void run_client(int port) {
     printf("Connected as Player %d. Waiting for game start...\n", player_id);
 
     pthread_create(&recv_thread, NULL, receive_thread, NULL);
+    pthread_create(&timer, NULL, timer_thread, NULL);
 
     while (game_running) {
         pthread_mutex_lock(&turn_mutex);
@@ -475,8 +523,11 @@ void run_client(int port) {
 
         if (game_running && my_turn) {
             pthread_mutex_unlock(&turn_mutex);
-            render_game();
+            input_mode = 1;
+            render_full_game();
             handle_shoot_action();
+            status_message[0] = '\0';
+            input_mode = 0;
             pthread_mutex_lock(&turn_mutex);
             my_turn = 0;
         }
@@ -486,6 +537,7 @@ void run_client(int port) {
     shutdown(sock, SHUT_RDWR);
     close(sock);
 
+    pthread_join(timer, NULL);
     pthread_join(recv_thread, NULL);
 
     free(localBoards);
