@@ -3,6 +3,7 @@
 #include <pthread.h>
 
 #define MAX_CLIENTS 10
+#define ROUND_TIMEOUT_SEC 60
 
 typedef enum {
     SERVER_LOBBY,

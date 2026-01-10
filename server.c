@@ -6,6 +6,7 @@
 #include "stdlib.h"
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/poll.h>
 
 pthread_mutex_t server_mutex = PTHREAD_MUTEX_INITIALIZER;
 server_state_t state = SERVER_LOBBY;
@@ -54,7 +55,35 @@ int ship_handler(int client, Board* board, int limit) {
     }
 }
 
+void generate_random_shot(Game* game, int shooter_idx, int num_clients, int* player_alive, int* target_id, int* x, int* y) {
+    int target;
+
+    while (1) {
+        int r = rand() % num_clients;
+        if (r != shooter_idx && player_alive[r]) {
+            target = r;
+            break;
+        }
+    }
+
+    Board* b = game->boards[target];
+    int rx, ry;
+
+    while (1) {
+        rx = rand() % b->width;
+        ry = rand() % b->height;
+        if (b->hits_map[ry * b->width + rx] == 0) {
+            break;
+        }
+    }
+    *target_id = target;
+    *x = rx;
+    *y = ry;
+}
+
 void run_server(int port, int num_clients, int height, int width) {
+    srand(time(NULL));
+
     int server_fd, newSocket;
     struct sockaddr_in addr;
     int addrlen = sizeof(addr);
@@ -135,28 +164,61 @@ void run_server(int port, int num_clients, int height, int width) {
         }
 
         int active_fd = clients[current_turn];
-        sendMsg(active_fd, "YOUR TURN");
+        char turn_msg[BUF_SIZE];
+        snprintf(turn_msg, BUF_SIZE, "YOUR TURN %d", ROUND_TIMEOUT_SEC);
+        sendMsg(active_fd, turn_msg);
 
-        memset(buffer, 0, BUF_SIZE);
-        int bytes = recvBuff(active_fd, buffer, BUF_SIZE);
+        struct pollfd pfd;
+        pfd.fd = active_fd;
+        pfd.events = POLLIN;
+
+        int ret = poll(&pfd, 1, ROUND_TIMEOUT_SEC * 1000);
 
         int target_id = -1, x = -1, y = -1;
+        int valid_input_received = 0;
 
-        if (bytes <= 0) {
-            printf("Player %d disconnected.\n", current_turn);
-            player_alive[current_turn] = 0;
-            players_remaining--;
-            close(active_fd);
-            if (players_remaining < 2) {
-                break;
+         if (ret > 0) {
+            if (pfd.revents & POLLIN) {
+                memset(buffer, 0, BUF_SIZE);
+                int bytes = recvBuff(active_fd, buffer, BUF_SIZE);
+
+                if (bytes <= 0) {
+                    printf("Player %d disconnected.\n", current_turn);
+                    player_alive[current_turn] = 0;
+                    players_remaining--;
+                    close(active_fd);
+                    if (players_remaining < 2) {
+                        break;
+                    }
+                    current_turn = (current_turn + 1) % num_clients;
+                    continue;
+                }
+
+                if (sscanf(buffer, "%d %d %d", &target_id, &x, &y) == 3) {
+                    valid_input_received = 1;
+                } else {
+                    sendMsg(active_fd, "ERROR Invalid format");
+                    continue;
+                }
             }
-            current_turn = (current_turn + 1) % num_clients;
-            continue;
+        }
+        else if (ret == 0) {
+            printf("\n[SERVER] Player %d timed out. Performing random shot.\n", current_turn);
+            generate_random_shot(gameInstance, current_turn, num_clients, player_alive, &target_id, &x, &y);
+            char info[BUF_SIZE];
+            snprintf(info, BUF_SIZE, "RANDOM_SHOT %d %d %d %d", current_turn, target_id, x, y);
+            for (int i = 0; i < num_clients; i++) {
+                sendMsg(clients[i], info);
+            }
+            valid_input_received = 1;
+        }
+        else {
+            perror("poll error");
+            break;
         }
 
-        if (sscanf(buffer, "%d %d %d", &target_id, &x, &y) == 3) {
+        if (valid_input_received) {
             int target_idx = target_id;
-
             if (target_idx < 0 || target_idx >= num_clients || target_idx == current_turn || player_alive[target_idx] == 0) {
                 sendMsg(active_fd, "ERROR Player ID is invalid");
                 continue;
@@ -205,8 +267,6 @@ void run_server(int port, int num_clients, int height, int width) {
             } else {
                 current_turn = (current_turn + 1) % num_clients;
             }
-        } else {
-            sendMsg(active_fd, "ERROR Invalid format");
         }
     }
     free(player_alive);

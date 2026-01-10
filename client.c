@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/poll.h>
 
 int sock, player_id;
 volatile int game_running = 1;
@@ -220,22 +221,53 @@ int handle_init() {
     return 0;
 }
 
+int get_input_safe(int *var) {
+    struct pollfd fds[2];
+    fds[0].fd = STDIN_FILENO;
+    fds[0].events = POLLIN;
+    fds[1].fd = sock;
+    fds[1].events = POLLIN;
+
+    while (1) {
+        int ret = poll(fds, 2, -1);
+        if (ret < 0) {
+            return 0;
+        }
+
+        if (fds[1].revents & POLLIN) {
+            return -1;
+        }
+
+        if (fds[0].revents & POLLIN) {
+            if (scanf("%d", var) == 1) {
+                return 1;
+            }
+            while (getchar() != '\n');
+            printf("Invalid. Try again: ");
+            fflush(stdout);
+        }
+    }
+}
+
 void handle_shoot_action() {
     int target, x, y;
 
     printf("\n--- YOUR TURN ---\n");
     while (1) {
         printf("Enter Target Player ID: ");
-        if (scanf("%d", &target) != 1) {
-            continue;
+        fflush(stdout);
+        if (get_input_safe(&target) <= 0) {
+            return;
         }
         printf("Enter X Coordinate: ");
-        if (scanf("%d", &x) != 1) {
-            continue;
+        fflush(stdout);
+        if (get_input_safe(&x) <= 0) {
+            return;
         }
         printf("Enter Y Coordinate: ");
-        if (scanf("%d", &y) != 1) {
-            continue;
+        fflush(stdout);
+        if (get_input_safe(&y) <= 0) {
+            return;
         }
 
         if (x < 0 || y < 0 || x >= g_width || y >= g_height) {
@@ -325,6 +357,11 @@ void* receive_thread() {
                 }
             }
         } else if (strncmp(buffer, "YOUR TURN", 9) == 0) {
+            int seconds;
+            if (sscanf(buffer, "YOUR_TURN %d", &seconds) == 1) {
+                snprintf(status_message, BUF_SIZE, "Your turn! You have %d seconds to shoot.", seconds);
+            }
+
             pthread_mutex_lock(&turn_mutex);
             my_turn = 1;
             pthread_cond_signal(&turn_cond);
@@ -367,6 +404,14 @@ void* receive_thread() {
             break;
         } else if (strncmp(buffer, "ERROR", 5) == 0) {
             strncpy(status_message, buffer, BUF_SIZE - 1);
+        } else if (strncmp(buffer, "RANDOM_SHOT", 11) == 0) {
+            int shooter, target, x, y;
+            if (sscanf(buffer, "RANDOM_SHOT %d %d %d %d", &shooter, &target, &x, &y) == 4) {
+                snprintf(status_message, BUF_SIZE,
+                    "Player %d timed out! Random shot at Player %d (%d,%d).", shooter, target, x, y);
+
+                render_game();
+            }
         }
     }
     game_running = 0;
