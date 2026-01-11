@@ -27,18 +27,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b48041e4-1272-4312-8452-70e887af0a30" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/input.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/input.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/interface.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/interface.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/Makefile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/client.c" beforeDir="false" afterPath="$PROJECT_DIR$/client.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/client.h" beforeDir="false" afterPath="$PROJECT_DIR$/client.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/communication.c" beforeDir="false" afterPath="$PROJECT_DIR$/communication.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/communication.h" beforeDir="false" afterPath="$PROJECT_DIR$/communication.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server.h" beforeDir="false" afterPath="$PROJECT_DIR$/server.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server.c" beforeDir="false" afterPath="$PROJECT_DIR$/server.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -161,7 +152,7 @@
       <workItem from="1767953159877" duration="16855000" />
       <workItem from="1768032809909" duration="2014000" />
       <workItem from="1768064845048" duration="14935000" />
-      <workItem from="1768124526472" duration="21522000" />
+      <workItem from="1768124526472" duration="30245000" />
     </task>
     <servers />
   </component>

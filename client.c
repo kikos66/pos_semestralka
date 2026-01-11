@@ -24,8 +24,8 @@ int random_shot = 0;
 
 int g_players, g_height, g_width;
 
-int shipHeights[] = {1};
-int shipWidths[]  = {1};
+int shipHeights[] = {3,2,1,2,2};
+int shipWidths[]  = {1,1,3,1,2};
 
 char status_msgs[STATUS_MAX][BUF_SIZE];
 int status_msg_count = 0;
