@@ -1,6 +1,8 @@
 #include "client.h"
 #include "communication.h"
 #include "server.h"
+#include "interface.h"
+#include "input.h"
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,84 +10,32 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <sys/poll.h>
 
 int sock, player_id;
 volatile int game_running = 1;
 char status_message[BUF_SIZE] = "";
-int my_turn = 0;
 char* localBoards;
+int my_turn = 0;
 pthread_mutex_t turn_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t turn_cond = PTHREAD_COND_INITIALIZER;
 int current_turn_player = -1;
 time_t turn_end_time = 0;
-int turn_duration = 0;
-volatile int input_mode = 0;
+int random_shot = 0;
 
 int g_players, g_height, g_width;
-#define BOARD_INDEX(p, y, x) (((p) * g_height + (y)) * g_width + (x))
 
 int shipHeights[] = {1};
 int shipWidths[]  = {1};
 
+char status_msgs[STATUS_MAX][BUF_SIZE];
+int status_msg_count = 0;
+
 void handle_signal() {
-    sendMsg(STDOUT_FILENO, "Quitting game");
+    sendMsg(sock, "Quitting game");
     if (sock > 0) {
         close(sock);
     }
     _exit(0);
-}
-
-int get_port_number_from_user() {
-    int port = 0;
-    int ok = 0;
-    printf("Enter port number:\n");
-    while (!ok) {
-        if (scanf("%d", &port) != 1) {
-            while (getchar() != '\n');
-            printf("Invalid input. Enter port number:\n");
-            continue;
-        }
-        if (port >= 1024 && port <= 65535) {
-            ok = 1;
-        } else {
-            while (getchar() != '\n');
-            printf("Port number is invalid, port must be in range 1024-65535:\n");
-        }
-    }
-    return port;
-}
-
-void get_init_from_user(int *n, int *h, int *w) {
-    while (1) {
-        int height = 0;
-        int width = 0;
-        int num = 0;
-        printf("Please enter number of players [2-10]:\n");
-        if (scanf("%d", &num) != 1 || num < 2 || num > 10) {
-            printf("Invalid input.\n");
-            while (getchar() != '\n');
-            continue;
-        }
-
-        printf("Please enter height of your playing board [4-10]:\n");
-        if (scanf("%d", &height) != 1 || height < 4 || height > 10) {
-            printf("Invalid input.\n");
-            while (getchar() != '\n');
-            continue;
-        }
-
-        printf("Please enter width of your playing board [4-10]:\n");
-        if (scanf("%d", &width) != 1 || width < 4 || width > 10) {
-            printf("Invalid input.\n");
-            while (getchar() != '\n');
-            continue;
-        }
-        *n = num;
-        *h = height;
-        *w = width;
-        break;
-    }
 }
 
 void init_local_boards(int n, int h, int w) {
@@ -101,92 +51,10 @@ void init_local_boards(int n, int h, int w) {
     memset(localBoards, 0, sizeof(char*) * n * h * w);
 }
 
-void render_turn_header_only() {
-    printf("\033[s");
-    printf("\033[H");
-    printf("=== BATTLESHIP : Player %d ===\n", player_id);
-
-    if (current_turn_player != -1) {
-        int remaining = (int)(turn_end_time - time(NULL));
-        if (remaining < 0) remaining = 0;
-
-        if (current_turn_player == player_id)
-            printf(GREEN "Your turn! " RESET);
-        else
-            printf("Player %d's turn. ", current_turn_player);
-
-        printf("Time left: %d sec\n", remaining);
+void update_board_state(int target_id, int x, int y, int status) {
+    if (target_id >= 0 && target_id < g_players && x >= 0 && x < g_width && y >= 0 && y < g_height) {
+        localBoards[BOARD_INDEX(target_id, y, x, g_height, g_width)] = status;
     }
-    printf("\n");
-    printf("\033[u");
-    fflush(stdout);
-}
-
-void render_game_contents() {
-    render_turn_header_only();
-    printf("\n");
-    printf("\n--- MY BOARD ---\n");
-    printf("   ");
-    for(int x = 0; x < g_width; x++) {
-        printf("%d ", x);
-    }
-    printf("\n");
-    for (int y = 0; y < g_height; y++) {
-        printf("%d |", y);
-        for (int x = 0; x < g_width; x++) {
-            char cell = localBoards[BOARD_INDEX(player_id, y, x)];
-            if (cell == 0) {
-                printf(BLUE "~ " RESET);
-            } else if (cell == 1) {
-                printf(GREEN "S " RESET);
-            } else if (cell == 2) {
-                printf(YELLOW "O " RESET);
-            } else if (cell == 3) {
-                printf(RED "X " RESET);
-            }
-        }
-        printf("|\n");
-    }
-    printf("\n");
-
-    printf("--- OPPONENT BOARDS ---\n");
-    for (int p = 0; p < g_players; p++) {
-        if (p == player_id) {
-            continue;
-        }
-
-        printf("Player %d:\n", p);
-        printf("   ");
-        for(int x = 0; x < g_width; x++) {
-            printf("%d ", x);
-        }
-        printf("\n");
-
-        for (int y = 0; y < g_height; y++) {
-            printf("%d |", y);
-            for (int x = 0; x < g_width; x++) {
-                char cell = localBoards[BOARD_INDEX(p, y, x)];
-                if (cell == 0 || cell == 1) {
-                    printf(BLUE "~ " RESET);
-                } else if (cell == 2) {
-                    printf(YELLOW "O " RESET);
-                } else if (cell == 3) {
-                    printf(RED "X " RESET);
-                }
-            }
-            printf("|\n");
-        }
-        printf("\n");
-    }
-    if (status_message[0] != '\0') {
-        printf(RED "\n%s\n" RESET, status_message);
-    }
-    fflush(stdout);
-}
-
-void render_full_game() {
-    printf("\033[2J\033[H");
-    render_game_contents();
 }
 
 void* timer_thread() {
@@ -198,17 +66,10 @@ void* timer_thread() {
         pthread_mutex_unlock(&turn_mutex);
 
         if (redraw_timer) {
-            render_turn_header_only();
+            render_header(player_id, current_turn_player, turn_end_time);
         }
     }
     return NULL;
-}
-
-
-void update_board_state(int target_id, int x, int y, int status) {
-    if (target_id >= 0 && target_id < g_players && x >= 0 && x < g_width && y >= 0 && y < g_height) {
-        localBoards[BOARD_INDEX(target_id, y, x)] = status;
-    }
 }
 
 int handle_init() {
@@ -220,6 +81,7 @@ int handle_init() {
     int h = shipHeights[currentShipID];
     int w = shipWidths[currentShipID];
     printf("\n--- Placing Ship Type %d Height: %d Width: %d) ---\n", currentShipID, h, w);
+
     printf("Enter the X coordinates of your ship:\n");
     if (scanf("%d", &x) != 1) {
         printf("Invalid input\n");
@@ -243,75 +105,39 @@ int handle_init() {
     if (strncmp(buffer, "OK", 2) == 0) {
         for (int i = 0; i < h; i++) {
             for (int j = 0; j < w; j++) {
-                localBoards[BOARD_INDEX(player_id, y + i, x + j)] = 1;
+                localBoards[BOARD_INDEX(player_id, y + i, x + j, g_height, g_width)] = 1;
             }
         }
-        render_full_game();
-        printf("Ship successfully placed\n");
+        snprintf(status_message, BUF_SIZE, "Ship placed.");
+        push_status(status_message);
+        render_game(player_id, g_players, g_height, g_width, localBoards,
+            current_turn_player, turn_end_time, status_msgs, status_msg_count);
+        clear_status();
         currentShipID = (currentShipID + 1) % NUM_SHIP_TYPES;
         return 1;
     }
-    if (strncmp(buffer, "FULL", 4) == 0) {
-        printf("There is already a ship on these coordinates\n");
-        return 0;
-    }
-    if (strncmp(buffer, "INVALID", 7) == 0) {
-        printf("Entered coordinates are outside the board range\n");
-        return 0;
-    }
-    printf("Unknown server response\n");
+    printf("Server: %s\n", buffer);
     return 0;
-}
-
-int get_input_safe(int *var) {
-    struct pollfd fds[2];
-    fds[0].fd = STDIN_FILENO;
-    fds[0].events = POLLIN;
-    fds[1].fd = sock;
-    fds[1].events = POLLIN;
-
-    while (1) {
-        int ret = poll(fds, 2, -1);
-        if (ret < 0) {
-            return 0;
-        }
-
-        if (fds[1].revents & POLLIN) {
-            return -1;
-        }
-
-        if (fds[0].revents & POLLIN) {
-            if (scanf("%d", var) == 1) {
-                return 1;
-            }
-            while (getchar() != '\n');
-            printf("Invalid. Try again: ");
-            fflush(stdout);
-        }
-    }
 }
 
 void handle_shoot_action() {
     int target, x, y;
 
-    input_mode = 1;
-    render_full_game();
-
     printf("\n--- YOUR TURN ---\n");
     while (1) {
         printf("Enter Target Player ID: ");
         fflush(stdout);
-        if (get_input_safe(&target) <= 0) {
+        if (get_safe(&target, sock) <= 0) {
             return;
         }
         printf("Enter X Coordinate: ");
         fflush(stdout);
-        if (get_input_safe(&x) <= 0) {
+        if (get_safe(&x, sock) <= 0) {
             return;
         }
         printf("Enter Y Coordinate: ");
         fflush(stdout);
-        if (get_input_safe(&y) <= 0) {
+        if (get_safe(&y, sock) <= 0) {
             return;
         }
 
@@ -323,8 +149,7 @@ void handle_shoot_action() {
             printf("Invalid target\n");
             continue;
         }
-
-        char cell = localBoards[BOARD_INDEX(target, y, x)];
+        char cell = localBoards[BOARD_INDEX(target, y, x, g_height, g_width)];
 
         if (cell != 0) {
             int flag = 0;
@@ -351,15 +176,13 @@ void* receive_thread() {
     while (game_running && (bytes = recvBuff(sock, buffer, BUF_SIZE - 1)) > 0) {
         buffer[bytes] = '\0';
         if (strncmp(buffer, "START", 5) == 0) {
-            if (player_id == 0) {
-                printf("Game started\n");
-            } else {
-                printf("\nGame Started! Waiting for Player 1 to set up the game...\n");
-            }
+            print_message(player_id == 0 ? "Game started" : "Game Started! Waiting for Host...");
         } else if (strncmp(buffer, "INIT", 4) == 0) {
-            render_full_game();
-            printf("[INFO] Setting up ships\n");
-
+            snprintf(status_message, BUF_SIZE, "Setting up ships...");
+            push_status(status_message);
+            render_game(player_id, g_players, g_height, g_width, localBoards,
+                current_turn_player, turn_end_time, status_msgs, status_msg_count);
+            clear_status();
             if (player_id == 0) {
                 while(!handle_init()) {
 
@@ -387,11 +210,13 @@ void* receive_thread() {
             } else {
                 int ships_needed = 0;
                 if (sscanf(buffer, "INIT %d", &ships_needed) == 1) {
-                    printf("Host placed %d ships. You must place %d ships.\n", ships_needed, ships_needed);
-
+                    snprintf(status_message, BUF_SIZE, "Host placed %d ships. You must place %d ships.\n", ships_needed, ships_needed);
                     for (int i = 0; i < ships_needed; i++) {
-                        printf("--- Placing Ship %d of %d ---\n", i + 1, ships_needed);
-                        while (!handle_init());
+                        snprintf(status_message, BUF_SIZE, "--- Placing Ship %d of %d ---\n", i + 1, ships_needed);
+                        push_status(status_message);
+                        while (!handle_init()) {
+                            clear_status();
+                        }
                     }
 
                     char resp[BUF_SIZE];
@@ -404,10 +229,10 @@ void* receive_thread() {
         } else if (strncmp(buffer, "TURN", 4) == 0) {
             int player, seconds;
             if (sscanf(buffer, "TURN %d %d", &player, &seconds) == 2) {
+
                 pthread_mutex_lock(&turn_mutex);
 
                 current_turn_player = player;
-                turn_duration = seconds;
                 turn_end_time = time(NULL) + seconds;
 
                 if (player == player_id) {
@@ -415,34 +240,43 @@ void* receive_thread() {
                     pthread_cond_signal(&turn_cond);
                 }
 
-                pthread_mutex_unlock(&turn_mutex);
+                render_game(player_id, g_players, g_height, g_width, localBoards,
+                    current_turn_player, turn_end_time, status_msgs, status_msg_count);
 
-                render_full_game();
+                pthread_mutex_unlock(&turn_mutex);
             }
         } else if (strncmp(buffer, "HIT", 3) == 0) {
             int p_from, p_to, tx, ty;
             if(sscanf(buffer, "HIT %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
                 update_board_state(p_to, tx, ty, 3);
+                if (my_turn == 0 && random_shot == 0) {
+                    clear_status();
+                }
                 snprintf(buffer, BUF_SIZE, "Player %d hit Player %d at (%d,%d).", p_from, p_to, tx, ty);
-                strncpy(status_message, buffer, BUF_SIZE - 1);
+                push_status(buffer);
+                random_shot = 0;
             }
         } else if (strncmp(buffer, "MISS", 4) == 0) {
             int p_from, p_to, tx, ty;
             if(sscanf(buffer, "MISS %d %d %d %d", &p_from, &p_to, &tx, &ty) == 4) {
+                if (my_turn == 0 && random_shot == 0) {
+                    clear_status();
+                }
                 update_board_state(p_to, tx, ty, 2);
                 snprintf(buffer, BUF_SIZE, "Player %d missed Player %d at (%d,%d).", p_from, p_to, tx, ty);
-                strncpy(status_message, buffer, BUF_SIZE - 1);
+                push_status(buffer);
+                random_shot = 0;
             }
         } else if (strncmp(buffer, "ELIMINATED", 10) == 0) {
             int dead;
             sscanf(buffer, "ELIMINATED %d", &dead);
-            printf(RED "\nPlayer %d Eliminated!\n" RESET, dead);
-            if (dead == player_id) {
-                printf("[ALERT] You have lost all your ships. You are out.\n");
-            }
+            snprintf(status_message, BUF_SIZE, "Player %d has been eliminated!", dead);
+            push_status(status_message);
         } else if (strncmp(buffer, "WINNER", 6) == 0) {
             int win;
             sscanf(buffer, "WINNER %d", &win);
+            render_game(player_id, g_players, g_height, g_width, localBoards,
+                    current_turn_player, turn_end_time, status_msgs, status_msg_count);
             printf(GREEN "\n!!! Player %d WINS !!!\n" RESET, win);
             pthread_mutex_lock(&turn_mutex);
             game_running = 0;
@@ -450,14 +284,15 @@ void* receive_thread() {
             pthread_mutex_unlock(&turn_mutex);
             break;
         } else if (strncmp(buffer, "ERROR", 5) == 0) {
-            strncpy(status_message, buffer, BUF_SIZE - 1);
-        } else if (strncmp(buffer, "RANDOM_SHOT", 11) == 0) {
+            push_status(buffer);
+        } else if (strncmp(buffer, "RANDOM SHOT", 11) == 0) {
             int shooter, target, x, y;
-            if (sscanf(buffer, "RANDOM_SHOT %d %d %d %d", &shooter, &target, &x, &y) == 4) {
+            if (sscanf(buffer, "RANDOM SHOT %d %d %d %d", &shooter, &target, &x, &y) == 4) {
+                clear_status();
                 snprintf(status_message, BUF_SIZE,
                     "Player %d timed out! Random shot at Player %d (%d,%d).", shooter, target, x, y);
-
-                render_full_game();
+                push_status(status_message);
+                random_shot = 1;
             }
         }
     }
@@ -500,9 +335,7 @@ void run_client(int port) {
 
     int temp_n, temp_h, temp_w;
     if (sscanf(buffer, "ID %d %d %d %d", &player_id, &temp_n, &temp_h, &temp_w) == 4) {
-        printf("Connected as Player %d.\n", player_id);
         printf("Game Config Received: %d Players, Map %dx%d\n", temp_n, temp_w, temp_h);
-
         init_local_boards(temp_n, temp_h, temp_w);
     } else {
         printf("Error: Invalid handshake from server.\n");
@@ -523,11 +356,10 @@ void run_client(int port) {
 
         if (game_running && my_turn) {
             pthread_mutex_unlock(&turn_mutex);
-            input_mode = 1;
-            render_full_game();
+            render_game(player_id, g_players, g_height, g_width, localBoards,
+                current_turn_player, turn_end_time,  status_msgs, status_msg_count);
             handle_shoot_action();
             status_message[0] = '\0';
-            input_mode = 0;
             pthread_mutex_lock(&turn_mutex);
             my_turn = 0;
         }
@@ -559,8 +391,8 @@ void run_client_interactive() {
             continue;
         }
         if (choice == 1) {
-            port = get_port_number_from_user();
-            get_init_from_user(&num, &height, &width);
+            port = get_port();
+            get_init_params(&num, &height, &width);
 
             pid_t pid = fork();
             if (pid < 0) {
@@ -578,7 +410,7 @@ void run_client_interactive() {
                 break;
             }
         } else if (choice == 2) {
-            port = get_port_number_from_user();
+            port = get_port();
             run_client(port);
             break;
         } else {
